@@ -53,7 +53,7 @@ client = tweepy.Client(bearer_token=BEARER_TOKEN)
 query = "Air India plane crash survivor news"
 
 # Search recent tweets (max 20)
-response = client.search_recent_tweets(query=query, max_results=10)
+response = client.search_recent_tweets(query=query, max_results=11)
 
 # Collect and clean tweets
 cleaned_tweets = []
@@ -73,6 +73,6 @@ if response.data:
             seen.add(cleaned)
             print("Original:", text)
             print("Cleaned :", cleaned)
-            print("-" * 40)
+            print("-" * 50)
 else:
     print(" No tweets found.")
