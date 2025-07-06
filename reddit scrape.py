@@ -104,7 +104,7 @@ for sub in trusted_subs:
                                              "rest in peace", "legit", "genuine", "authentic", "witnessed", "heard", "verified", "happened"]):
                     supportive_total += 1
                     supportive_comments.append(comment.body)
-                elif any(k in cleaned for k in ["fake news", "this is fake", "this is false", "clickbait", "fabricated", "not true", "hoax", "lie", "conspiracy" "misleading", "debunked",
+                elif any(k in cleaned for k in ["fake", "fake news", "this is fake", "this is false", "clickbait", "fabricated", "not true", "hoax", "lie", "conspiracy" "misleading", "debunked",
                                                 "satire", "no evidence", "rumor", "photoshop", "edited", "unconfirmed", "fabricated",
                                                 "exaggerated", "scam", "bot posted", "ai generated", "manipulated", "nonsense"]):
                     against_total += 1
