@@ -99,7 +99,7 @@ for sub in trusted_subs:
                 all_comments.append(cleaned)
 
                 # Classification
-                if any(k in cleaned for k in ["true", "confirmed", "i saw", "real", "this happened", "rip", "sad", "terrible",
+                if any(k in cleaned for k in ["true","real", "confirmed", "i saw", "real", "this happened", "rip", "sad", "terrible",
                                              "tragedy", "devastating", "so sorry", "my condolences", "can't believe", "heartbreaking",
                                              "rest in peace", "legit", "genuine", "authentic", "witnessed", "heard", "verified", "happened"]):
                     supportive_total += 1
