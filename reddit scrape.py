@@ -1,108 +1,164 @@
-"""import praw
-
-# Your credentials
-client_id = '5AQBWn4UkacEZl_YG192yA'         # YOUR client_id
-client_secret = 'OWlyu31unR9o1JAipzpTS-Uslk7uKg'  # YOUR client_secret
-user_agent = 'NewsVerifierBot'
-
-# Create Reddit client
-reddit = praw.Reddit(client_id=client_id,
-                     client_secret=client_secret,
-                     user_agent=user_agent)
-
-# Search news query (example)
-query = "BAN vs SL"
-subreddit = reddit.subreddit("all")
-
-# Search Reddit posts
-results = subreddit.search(query, limit=5)
-
-# Process results
-for post in results:
-    print("Title:", post.title)
-    print("Upvotes:", post.score)
-    print("Comments:", post.num_comments)
-    print("Posted by:", post.author)
-    print("-" * 40)"""
-    
 import praw
 import re
-from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # ------------------------------------------
-# 1. Clean function
+# 1. Clean text function
 # ------------------------------------------
 def clean_text(text):
-    text = re.sub(r"http\S+", "", text)        # Remove links
-    text = re.sub(r"@\w+", "", text)           # Remove mentions
-    text = re.sub(r"#\w+", "", text)           # Remove hashtags
-    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove emojis / Unicode
-    text = re.sub(r"[^\w\s]", "", text)        # Remove punctuation
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    text = re.sub(r"#\w+", "", text)
+    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    text = re.sub(r"[^\w\s]", "", text)
     return text.lower().strip()
 
 # ------------------------------------------
-# 2. Sentiment function
+# 2. Sentiment analysis setup
 # ------------------------------------------
+analyzer = SentimentIntensityAnalyzer()
+
 def analyze_sentiment(text):
-    return TextBlob(text).sentiment.polarity  # value: -1.0 (negative) to +1.0 (positive)
+    score = analyzer.polarity_scores(text)
+    return score['compound']
 
 # ------------------------------------------
-
-# 3. Reddit API Setup
+# 3. Reddit API Setup (AUTHENTICATION)
 # ------------------------------------------
-client_id = '5AQBWn4UkacEZl_YG192yA'         # YOUR client_id
-client_secret = 'OWlyu31unR9o1JAipzpTS-Uslk7uKg'  # YOUR client_secret
-user_agent = 'NewsVerifierBot'
-
-reddit = praw.Reddit(client_id=client_id,
-                     client_secret=client_secret,
-                     user_agent=user_agent)
+reddit = praw.Reddit(
+   client_id='5AQBWn4UkacEZl_YG192yA',
+   client_secret='OWlyu31unR9o1JAipzpTS-Uslk7uKg',
+   user_agent='NewsVerifierBot'
+)
 
 # ------------------------------------------
-# 3. Query Reddit
+# 4. Subreddits and query
 # ------------------------------------------
-query = "Air India crash survivor"
-subreddit = reddit.subreddit("all")
+trusted_subs = [
+    "news", "worldnews", "bbcnews", "reuters", "nytimes", "aljazeera", "CNN", "sports"
+]
 
-results = subreddit.search(query, limit=5)
+query = "Texas Flood"
 
 # ------------------------------------------
-# 4. Process and clean each post
+# 5. Keywords for real/fake news detection
 # ------------------------------------------
-for post in results:
-    original_title = post.title
-    cleaned_title = clean_text(original_title)
-    sentiment = analyze_sentiment(cleaned_title)
+keywords_real = [
+    "confirmed", "official", "reported", "identified", "statement", "verified", "announced",
+    "declared", "according to", "evidence", "released", "published", "witnesses", "investigation",
+    "recorded", "documented", "acknowledged", "testimony", "press release", "clarified", "authenticated",
+    "authorities", "law enforcement", "approved", "confirmed by", "medical examiner", "autopsy"
+]
 
-    print("Original Title:", original_title)
-    print("Cleaned Title :", cleaned_title)
-    print("Sentiment Score:", round(sentiment, 2))
-    print("Upvotes       :", post.score)
-    print("Comments      :", post.num_comments)
-    print("Posted by     :", post.author)
-    print("-" * 50)
+keywords_fake = [
+    "fake", "hoax", "misleading", "satire", "debunked", "rumor", "unverified", "conspiracy",
+    "clickbait", "baseless", "false", "no evidence", "denied", "fabricated", "not true", "fake news",
+    "mocked", "joke", "troll", "allegedly", "shocking but unconfirmed", "deepfake", "misstated",
+    "manipulated", "exaggerated", "uncorroborated", "pseudoscience", "fraudulent"
+]
 
-try:
-        post.comments.replace_more(limit=0)
-        comment_sentiments = []
+# ------------------------------------------
+# 6. Search and process posts
+# ------------------------------------------
+all_comments = []
+supportive_comments = []
+against_comments = []
 
-        for comment in post.comments[:5]:  # Analyze first 5 top comments
-            cleaned_comment = clean_text(comment.body)
-            score = analyze_sentiment(cleaned_comment)
-            comment_sentiments.append(score)
+verified_sources_count = 0
+high_engagement_posts = 0
+supportive_total = 0
+against_total = 0
+neutral_total = 0
 
-            print("🗨️  Comment        :", comment.body)
-            print("   Cleaned         :", cleaned_comment)
-            print("   Sentiment Score :", round(score, 2))
-            print("-" * 40)
+print(f"\n🔍 Searching '{query}' in trusted subreddits...\n")
 
-        if comment_sentiments:
-            avg_comment_sentiment = sum(comment_sentiments) / len(comment_sentiments)
-            print(f"📘 Avg Comment Sentiment: {round(avg_comment_sentiment, 2)}")
-        else:
-            print("📘 No valid comments to analyze.")
+for sub in trusted_subs:
+    subreddit = reddit.subreddit(sub)
+    results = subreddit.search(query, sort='new', time_filter='month', limit=10)
 
-except Exception as e:
-        print("⚠️ Error reading comments:", e)
+    for post in results:
+        if post.score < 5 or post.num_comments < 1:
+            continue
 
-print("=" * 60)
+        verified_sources_count += 1
+        if post.ups > 50:
+            high_engagement_posts += 1
+
+        print("📰 Title           :", post.title)
+        print("💬 Comments        :", post.num_comments)
+        print("📍 Subreddit       :", sub)
+        print("-" * 60)
+
+        try:
+            post.comments.replace_more(limit=0)
+            comments = post.comments[:10]
+
+            for i, comment in enumerate(comments):
+                cleaned = clean_text(comment.body)
+                sentiment = analyze_sentiment(cleaned)
+                all_comments.append(cleaned)
+
+                # Classification
+                if any(k in cleaned for k in ["true","real", "confirmed", "i saw", "real", "this happened", "rip", "sad", "terrible",
+                                             "tragedy", "devastating", "so sorry", "my condolences", "can't believe", "heartbreaking",
+                                             "rest in peace", "legit", "genuine", "authentic", "witnessed", "heard", "verified", "happened"]):
+                    supportive_total += 1
+                    supportive_comments.append(comment.body)
+                elif any(k in cleaned for k in ["fake", "fake news", "this is fake", "this is false", "clickbait", "fabricated", "not true", "hoax", "lie", "conspiracy" "misleading", "debunked",
+                                                "satire", "no evidence", "rumor", "photoshop", "edited", "unconfirmed", "fabricated",
+                                                "exaggerated", "scam", "bot posted", "ai generated", "manipulated", "nonsense"]):
+                    against_total += 1
+                    against_comments.append(comment.body)
+                else:
+                    if sentiment >= 0.1:
+                        supportive_total += 0.5
+                        supportive_comments.append(comment.body)
+                    elif sentiment <= -0.2:
+                        against_total += 0.5
+                        against_comments.append(comment.body)
+                    else:
+                        neutral_total += 1
+
+                print(f"🗨️  Comment {i+1}      :", comment.body)
+                print("   Cleaned         :", cleaned)
+                print("   Sentiment Score :", round(sentiment, 2))
+                print("-" * 40)
+
+        except Exception as e:
+            print("⚠️ Error reading comments:", e)
+
+# ------------------------------------------
+# 7. Final Verdict Logic
+# ------------------------------------------
+real_flags = sum(any(k in c for k in keywords_real) for c in all_comments)
+fake_flags = sum(any(k in c for k in keywords_fake) for c in all_comments)
+
+print("\n📊 Analyzing credibility signals...\n")
+print(f"📌 Trusted Sources Mentioned : {verified_sources_count}")
+print(f"📌 High Engagement Posts     : {high_engagement_posts}")
+print(f"📌 Real-flagged Comments     : {real_flags}")
+print(f"📌 Fake-flagged Comments     : {fake_flags}")
+print(f"📌 Supportive Comments Count : {supportive_total}")
+print(f"📌 Against Comments Count    : {against_total}")
+print(f"📌 Neutral Comments Count    : {neutral_total}")
+
+# Verdict logic
+if supportive_total >= against_total and real_flags >= fake_flags and verified_sources_count >= 2:
+    verdict = "✅ FINAL VERDICT: Likely Real"
+elif against_total > supportive_total and fake_flags >= 4:
+    verdict = "❌ FINAL VERDICT: Possibly Fake"
+else:
+    verdict = "❓ FINAL VERDICT: Uncertain"
+
+print(f"\n{verdict}\n")
+
+# ------------------------------------------
+# 8. Show flagged comments
+# ------------------------------------------
+print("🟢 Supportive Comments:\n")
+for com in supportive_comments:
+    print(" -", com.strip(), "\n")
+
+print("\n🔴 Against Comments:\n")
+for com in against_comments:
+    print(" -", com.strip(), "\n")
