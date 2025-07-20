@@ -44,15 +44,15 @@ class DatabaseConnection:
 
     def insert_verdict(self, query_id, trusted_sources, high_engagement,
                        real_flags, fake_flags, supportive_total,
-                       against_total, neutral_total, final_verdict):
+                       against_total, neutral_total,verdict):
         sql = """
         INSERT INTO verdicts (query_id, trusted_sources, high_engagement, real_flags, fake_flags,
-                              supportive_total, against_total, neutral_total, final_verdict, created_at)
+                              supportive_total, against_total, neutral_total,verdict, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         self.cursor.execute(sql, (
             query_id, trusted_sources, high_engagement, real_flags, fake_flags,
-            supportive_total, against_total, neutral_total, final_verdict, datetime.now()))
+            supportive_total, against_total, neutral_total,verdict, datetime.now()))
         self.connection.commit()
 
     def close(self):
