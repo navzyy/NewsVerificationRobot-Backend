@@ -1,6 +1,8 @@
 import praw
 import re
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from DatabaseConnection import DatabaseConnection
+from datetime import datetime
 
 # ------------------------------------------
 # 1. Clean text function
@@ -35,10 +37,14 @@ reddit = praw.Reddit(
 # 4. Subreddits and query
 # ------------------------------------------
 trusted_subs = [
-    "news", "worldnews", "bbcnews", "reuters", "nytimes", "aljazeera", "CNN", "sports"
+    "news", "worldnews", "bbcnews", "reuters", "nytimes", "aljazeera", "sports","CNN","popculturechat","Blogsnark","Instagramreality"
 ]
 
-query = "Texas Flood"
+query = "Astronomer It company CEO Resigns"
+
+# Setup database connection
+db = DatabaseConnection()
+query_id = db.insert_query(query)
 
 # ------------------------------------------
 # 5. Keywords for real/fake news detection
@@ -46,15 +52,23 @@ query = "Texas Flood"
 keywords_real = [
     "confirmed", "official", "reported", "identified", "statement", "verified", "announced",
     "declared", "according to", "evidence", "released", "published", "witnesses", "investigation",
-    "recorded", "documented", "acknowledged", "testimony", "press release", "clarified", "authenticated",
-    "authorities", "law enforcement", "approved", "confirmed by", "medical examiner", "autopsy"
+    "recorded", "documented", "acknowledged", "testimony", "press release", "clarified",
+    "authenticated", "authorities", "law enforcement", "approved", "confirmed by", "autopsy",
+    "announcement", "released by", "investigation confirmed", "court records show",
+    "eyewitness", "newswire", "from authorities", "breaking from", "statements from",
+    "government confirmed", "police report", "journalistic sources", "news outlet",
+    "medical report", "autopsy report", "cross-verified", "fact-checked"
 ]
 
 keywords_fake = [
-    "fake", "hoax", "misleading", "satire", "debunked", "rumor", "unverified", "conspiracy",
-    "clickbait", "baseless", "false", "no evidence", "denied", "fabricated", "not true", "fake news",
-    "mocked", "joke", "troll", "allegedly", "shocking but unconfirmed", "deepfake", "misstated",
-    "manipulated", "exaggerated", "uncorroborated", "pseudoscience", "fraudulent"
+    "fake", "hoax", "false", "not true", "clickbait", "fabricated",
+    "debunked", "satire", "misleading", "rumor", "no evidence",
+    "conspiracy", "unverified", "troll", "bot", "ai generated", "photoshop",
+    "mocked", "deepfake", "fraud", "misstated", "scam",
+    "this is a joke", "this didn't happen", "attention seeking", "misinfo",
+    "baseless", "denied", "fake news", "joke", "allegedly",
+    "shocking but unconfirmed", "manipulated", "exaggerated",
+    "uncorroborated", "pseudoscience", "fraudulent"
 ]
 
 # ------------------------------------------
@@ -84,42 +98,49 @@ for sub in trusted_subs:
         if post.ups > 50:
             high_engagement_posts += 1
 
+        post_id = db.insert_post(query_id, post.title, sub, post.ups, post.num_comments)
+
         print("📰 Title           :", post.title)
         print("💬 Comments        :", post.num_comments)
         print("📍 Subreddit       :", sub)
         print("-" * 60)
+   
 
         try:
             post.comments.replace_more(limit=0)
-            comments = post.comments[:10]
+            comments = post.comments[:15]
 
             for i, comment in enumerate(comments):
                 cleaned = clean_text(comment.body)
                 sentiment = analyze_sentiment(cleaned)
                 all_comments.append(cleaned)
 
-                # Classification
-                if any(k in cleaned for k in ["true","real", "confirmed", "i saw", "real", "this happened", "rip", "sad", "terrible",
+                if any(k in cleaned for k in ["true","real", "confirmed", "i saw", "this happened", "rip", "sad", "terrible",
                                              "tragedy", "devastating", "so sorry", "my condolences", "can't believe", "heartbreaking",
                                              "rest in peace", "legit", "genuine", "authentic", "witnessed", "heard", "verified", "happened"]):
                     supportive_total += 1
                     supportive_comments.append(comment.body)
-                elif any(k in cleaned for k in ["fake", "fake news", "this is fake", "this is false", "clickbait", "fabricated", "not true", "hoax", "lie", "conspiracy" "misleading", "debunked",
-                                                "satire", "no evidence", "rumor", "photoshop", "edited", "unconfirmed", "fabricated",
-                                                "exaggerated", "scam", "bot posted", "ai generated", "manipulated", "nonsense"]):
+                    classification = "supportive"
+                elif any(k in cleaned for k in keywords_fake):
                     against_total += 1
                     against_comments.append(comment.body)
+                    classification = "against"
                 else:
                     if sentiment >= 0.1:
                         supportive_total += 0.5
                         supportive_comments.append(comment.body)
+                        classification = "supportive"
                     elif sentiment <= -0.2:
                         against_total += 0.5
                         against_comments.append(comment.body)
+                        classification = "against"
                     else:
                         neutral_total += 1
+                        classification = "neutral"
 
-                print(f"🗨️  Comment {i+1}      :", comment.body)
+                db.insert_comment(post_id, comment.body, cleaned, sentiment, classification)
+
+                print(f"🗘️ Comment {i+1}      :", comment.body)
                 print("   Cleaned         :", cleaned)
                 print("   Sentiment Score :", round(sentiment, 2))
                 print("-" * 40)
@@ -142,15 +163,18 @@ print(f"📌 Supportive Comments Count : {supportive_total}")
 print(f"📌 Against Comments Count    : {against_total}")
 print(f"📌 Neutral Comments Count    : {neutral_total}")
 
-# Verdict logic
 if supportive_total >= against_total and real_flags >= fake_flags and verified_sources_count >= 2:
-    verdict = "✅ FINAL VERDICT: Likely Real"
+    verdict = "FINAL VERDICT: Likely Real"
 elif against_total > supportive_total and fake_flags >= 4:
-    verdict = "❌ FINAL VERDICT: Possibly Fake"
+    verdict = "FINAL VERDICT: Possibly Fake"
 else:
-    verdict = "❓ FINAL VERDICT: Uncertain"
+    verdict = "FINAL VERDICT: Uncertain"
 
 print(f"\n{verdict}\n")
+
+db.insert_verdict(query_id, verified_sources_count, high_engagement_posts,
+                  real_flags, fake_flags, supportive_total,
+                  against_total, neutral_total, verdict)
 
 # ------------------------------------------
 # 8. Show flagged comments
@@ -162,3 +186,8 @@ for com in supportive_comments:
 print("\n🔴 Against Comments:\n")
 for com in against_comments:
     print(" -", com.strip(), "\n")
+
+# ------------------------------------------
+# 9. Close database connection
+# ------------------------------------------
+db.close()
